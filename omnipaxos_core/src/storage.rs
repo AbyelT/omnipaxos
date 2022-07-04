@@ -79,6 +79,46 @@ where
     //fn size_hint() -> u64;  // TODO: To let the system know trade-off of using entries vs snapshot?
 }
 
+/// An in-memory cached storage implementation which stores the important values for Sequence_Paxos. Upon recovery it should recover necessary data from Storage
+#[allow(missing_docs)]
+#[derive(Clone, Debug)]
+pub struct CachedState {
+    /// Last promised round.
+    pub n_prom: Ballot,
+    /// Last accepted round.
+    pub acc_round: Ballot,
+    /// Length of the decided log.
+    pub ld: u64,
+}
+
+#[allow(missing_docs)]
+impl CachedState {
+    pub fn get_promise(&self) -> Ballot {
+        self.n_prom
+    }
+
+    pub fn get_accepted_round(&self) -> Ballot {
+        self.acc_round
+    }
+
+    pub fn get_decided_idx(&self) -> u64 {
+        self.ld
+    }
+
+    // pub fn recover_state(&self) -> Self {}
+
+} 
+
+impl Default for CachedState {
+    fn default() -> Self {
+        Self {
+            n_prom: Ballot::default(),
+            acc_round: Ballot::default(),
+            ld: 0,
+        }
+    }
+} 
+
 /// Trait for implementing the storage backend of Sequence Paxos.
 pub trait Storage<T, S>
 where

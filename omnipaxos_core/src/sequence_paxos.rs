@@ -1,7 +1,7 @@
 use super::{
     ballot_leader_election::Ballot,
     messages::*,
-    storage::{Entry, Snapshot, SnapshotType, StopSign, StopSignEntry, Storage},
+    storage::{Entry, Snapshot, SnapshotType, StopSign, StopSignEntry, Storage, CachedState},
     util::{
         defaults::BUFFER_SIZE, IndexEntry, LeaderState, LogEntry, PromiseMetaData,
         SnapshottedEntry, SyncItem,
@@ -27,6 +27,7 @@ where
     B: Storage<T, S>,
 {
     storage: B,
+    cached_state: CachedState,
     config_id: u32,
     pid: u64,
     peers: Vec<u64>, // excluding self pid
@@ -82,8 +83,11 @@ where
             }
         };
 
+        let cached_state: CachedState = CachedState::default();
+
         let mut paxos = SequencePaxos {
             storage,
+            cached_state,
             pid,
             config_id,
             peers,
@@ -548,7 +552,7 @@ where
 
     /// Returns the currently promised round.
     pub fn get_promise(&self) -> Ballot {
-        self.storage.get_promise()
+        self.cached_state.get_promise()
     }
 
     /*
@@ -594,7 +598,7 @@ where
         #[cfg(feature = "logging")]
         debug!(self.logger, "Newly elected leader: {:?}", n);
         let leader_pid = n.pid;
-        if n <= self.leader_state.n_leader || n <= self.storage.get_promise() {
+        if n <= self.leader_state.n_leader || n <= self.cached_state.get_promise() {
             return;
         }
         if self.stopped() {
@@ -1174,7 +1178,7 @@ where
 
     /*** Follower ***/
     fn handle_prepare(&mut self, prep: Prepare, from: u64) {
-        if self.storage.get_promise() <= prep.n {
+        if self.cached_state.get_promise() <= prep.n {
             self.leader = from;
             self.storage.set_promise(prep.n);
             self.state = (Role::Follower, Phase::Prepare);
@@ -1240,7 +1244,7 @@ where
     }
 
     fn handle_acceptsync(&mut self, accsync: AcceptSync<T, S>, from: u64) {
-        if self.storage.get_promise() == accsync.n && self.state == (Role::Follower, Phase::Prepare)
+        if self.cached_state.get_promise() == accsync.n && self.state == (Role::Follower, Phase::Prepare)
         {
             let accepted = match accsync.sync_item {
                 SyncItem::Entries(e) => {
@@ -1309,7 +1313,7 @@ where
     fn handle_firstaccept(&mut self, f: FirstAccept) {
         #[cfg(feature = "logging")]
         debug!(self.logger, "Incoming message First Accept");
-        if self.storage.get_promise() == f.n && self.state == (Role::Follower, Phase::FirstAccept) {
+        if self.cached_state.get_promise() == f.n && self.state == (Role::Follower, Phase::FirstAccept) {
             self.storage.set_accepted_round(f.n);
             self.state.1 = Phase::Accept;
             self.forward_pending_proposals();
@@ -1317,7 +1321,7 @@ where
     }
 
     fn handle_acceptdecide(&mut self, acc: AcceptDecide<T>) {
-        if self.storage.get_promise() == acc.n && self.state == (Role::Follower, Phase::Accept) {
+        if self.cached_state.get_promise() == acc.n && self.state == (Role::Follower, Phase::Accept) {
             let entries = acc.entries;
             self.accept_entries(acc.n, entries);
             // handle decide
@@ -1328,7 +1332,7 @@ where
     }
 
     fn handle_accept_stopsign(&mut self, acc_ss: AcceptStopSign) {
-        if self.storage.get_promise() == acc_ss.n && self.state == (Role::Follower, Phase::Accept) {
+        if self.cached_state.get_promise() == acc_ss.n && self.state == (Role::Follower, Phase::Accept) {
             self.accept_stopsign(acc_ss.ss);
             let a = AcceptedStopSign::with(acc_ss.n);
             self.outgoing.push(Message::with(
@@ -1340,13 +1344,13 @@ where
     }
 
     fn handle_decide(&mut self, dec: Decide) {
-        if self.storage.get_promise() == dec.n && self.state.1 == Phase::Accept {
+        if self.cached_state.get_promise() == dec.n && self.state.1 == Phase::Accept {
             self.storage.set_decided_idx(dec.ld);
         }
     }
 
     fn handle_decide_stopsign(&mut self, dec: DecideStopSign) {
-        if self.storage.get_promise() == dec.n && self.state.1 == Phase::Accept {
+        if self.cached_state.get_promise() == dec.n && self.state.1 == Phase::Accept {
             let mut ss = self
                 .storage
                 .get_stopsign()
