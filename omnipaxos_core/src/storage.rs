@@ -105,9 +105,21 @@ impl CachedState {
         self.ld
     }
 
-    // pub fn recover_state(&self) -> Self {}
+    pub fn set_promise(&mut self, n_prom: Ballot) {
+        self.n_prom = n_prom;
+    }
 
-} 
+    pub fn set_decided_idx(&mut self, ld: u64) {
+        self.ld = ld;
+    }
+
+    pub fn set_accepted_round(&mut self, na: Ballot) {
+        self.acc_round = na;
+    }
+
+    // TODO: A function to recover state from persistent storage, could be called by Sequence paxos during recovery
+    // pub fn recover_state(&self) -> Self {}
+}
 
 impl Default for CachedState {
     fn default() -> Self {
@@ -117,7 +129,7 @@ impl Default for CachedState {
             ld: 0,
         }
     }
-} 
+}
 
 /// Trait for implementing the storage backend of Sequence Paxos.
 pub trait Storage<T, S>

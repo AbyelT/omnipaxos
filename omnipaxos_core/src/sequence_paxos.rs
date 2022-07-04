@@ -109,7 +109,7 @@ where
                 })
             },
         };
-        paxos.storage.set_promise(n_leader);
+        paxos.cached_state.set_promise(n_leader);
         #[cfg(feature = "logging")]
         {
             info!(paxos.logger, "Paxos component pid: {} created!", pid);
@@ -612,7 +612,7 @@ where
                 self.leader_state.majority,
             );
             self.leader = leader_pid;
-            self.storage.set_promise(n);
+            self.cached_state.set_promise(n);
             /* insert my promise */
             let na = self.storage.get_accepted_round();
             let ld = self.storage.get_decided_idx();
@@ -953,7 +953,7 @@ where
                 .unwrap_or_else(|| self.create_snapshot(self.storage.get_log_len()));
             snapshot.merge(delta);
             self.set_snapshot(compacted_idx, snapshot);
-            self.storage.set_accepted_round(self.leader_state.n_leader);
+            self.cached_state.set_accepted_round(self.leader_state.n_leader);
         }
     }
 
@@ -1180,7 +1180,7 @@ where
     fn handle_prepare(&mut self, prep: Prepare, from: u64) {
         if self.cached_state.get_promise() <= prep.n {
             self.leader = from;
-            self.storage.set_promise(prep.n);
+            self.cached_state.set_promise(prep.n);
             self.state = (Role::Follower, Phase::Prepare);
             let na = self.storage.get_accepted_round();
             let la = self.storage.get_log_len();
@@ -1265,7 +1265,7 @@ where
                 }
                 _ => unimplemented!(),
             };
-            self.storage.set_accepted_round(accsync.n);
+            self.cached_state.set_accepted_round(accsync.n);
             self.state = (Role::Follower, Phase::Accept);
             #[cfg(feature = "latest_accepted")]
             {
@@ -1276,7 +1276,7 @@ where
                 .push(Message::with(self.pid, from, PaxosMsg::Accepted(accepted)));
 
             if let Some(idx) = accsync.decide_idx {
-                self.storage.set_decided_idx(idx);
+                self.cached_state.set_decided_idx(idx);
             }
             match accsync.stopsign {
                 Some(ss) => {
@@ -1314,7 +1314,7 @@ where
         #[cfg(feature = "logging")]
         debug!(self.logger, "Incoming message First Accept");
         if self.cached_state.get_promise() == f.n && self.state == (Role::Follower, Phase::FirstAccept) {
-            self.storage.set_accepted_round(f.n);
+            self.cached_state.set_accepted_round(f.n);
             self.state.1 = Phase::Accept;
             self.forward_pending_proposals();
         }
@@ -1326,7 +1326,7 @@ where
             self.accept_entries(acc.n, entries);
             // handle decide
             if acc.ld > self.storage.get_decided_idx() {
-                self.storage.set_decided_idx(acc.ld);
+                self.cached_state.set_decided_idx(acc.ld);
             }
         }
     }
@@ -1345,7 +1345,7 @@ where
 
     fn handle_decide(&mut self, dec: Decide) {
         if self.cached_state.get_promise() == dec.n && self.state.1 == Phase::Accept {
-            self.storage.set_decided_idx(dec.ld);
+            self.cached_state.set_decided_idx(dec.ld);
         }
     }
 
@@ -1357,7 +1357,7 @@ where
                 .expect("No stopsign found when deciding!");
             ss.decided = true;
             self.storage.set_stopsign(ss); // need to set it again now with the modified decided flag
-            self.storage.set_decided_idx(self.storage.get_log_len() + 1);
+            self.cached_state.set_decided_idx(self.storage.get_log_len() + 1);
         }
     }
 
