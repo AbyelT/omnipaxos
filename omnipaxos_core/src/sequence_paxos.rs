@@ -2,8 +2,7 @@ use super::{
     ballot_leader_election::Ballot,
     messages::*,
     storage::{
-        Entry, Snapshot, SnapshotType, StopSign, StopSignEntry, Storage,
-        cached_state::CachedState
+        cached_state::CachedState, Entry, Snapshot, SnapshotType, StopSign, StopSignEntry, Storage,
     },
     util::{
         defaults::BUFFER_SIZE, IndexEntry, LeaderState, LogEntry, PromiseMetaData,
@@ -960,7 +959,8 @@ where
                 .unwrap_or_else(|| self.create_snapshot(self.storage.get_log_len()));
             snapshot.merge(delta);
             self.set_snapshot(compacted_idx, snapshot);
-            self.cached_state.set_accepted_round(self.leader_state.n_leader);
+            self.cached_state
+                .set_accepted_round(self.leader_state.n_leader);
         }
     }
 
@@ -1251,7 +1251,8 @@ where
     }
 
     fn handle_acceptsync(&mut self, accsync: AcceptSync<T, S>, from: u64) {
-        if self.cached_state.get_promise() == accsync.n && self.state == (Role::Follower, Phase::Prepare)
+        if self.cached_state.get_promise() == accsync.n
+            && self.state == (Role::Follower, Phase::Prepare)
         {
             let accepted = match accsync.sync_item {
                 SyncItem::Entries(e) => {
@@ -1320,7 +1321,9 @@ where
     fn handle_firstaccept(&mut self, f: FirstAccept) {
         #[cfg(feature = "logging")]
         debug!(self.logger, "Incoming message First Accept");
-        if self.cached_state.get_promise() == f.n && self.state == (Role::Follower, Phase::FirstAccept) {
+        if self.cached_state.get_promise() == f.n
+            && self.state == (Role::Follower, Phase::FirstAccept)
+        {
             self.cached_state.set_accepted_round(f.n);
             self.state.1 = Phase::Accept;
             self.forward_pending_proposals();
@@ -1328,7 +1331,8 @@ where
     }
 
     fn handle_acceptdecide(&mut self, acc: AcceptDecide<T>) {
-        if self.cached_state.get_promise() == acc.n && self.state == (Role::Follower, Phase::Accept) {
+        if self.cached_state.get_promise() == acc.n && self.state == (Role::Follower, Phase::Accept)
+        {
             let entries = acc.entries;
             self.accept_entries(acc.n, entries);
             // handle decide
@@ -1339,7 +1343,9 @@ where
     }
 
     fn handle_accept_stopsign(&mut self, acc_ss: AcceptStopSign) {
-        if self.cached_state.get_promise() == acc_ss.n && self.state == (Role::Follower, Phase::Accept) {
+        if self.cached_state.get_promise() == acc_ss.n
+            && self.state == (Role::Follower, Phase::Accept)
+        {
             self.accept_stopsign(acc_ss.ss);
             let a = AcceptedStopSign::with(acc_ss.n);
             self.outgoing.push(Message::with(
@@ -1364,7 +1370,8 @@ where
                 .expect("No stopsign found when deciding!");
             ss.decided = true;
             self.storage.set_stopsign(ss); // need to set it again now with the modified decided flag
-            self.cached_state.set_decided_idx(self.storage.get_log_len() + 1);
+            self.cached_state
+                .set_decided_idx(self.storage.get_log_len() + 1);
         }
     }
 
