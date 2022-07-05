@@ -1,7 +1,10 @@
 use super::{
     ballot_leader_election::Ballot,
     messages::*,
-    storage::{Entry, Snapshot, SnapshotType, StopSign, StopSignEntry, Storage, CachedState},
+    storage::{
+        Entry, Snapshot, SnapshotType, StopSign, StopSignEntry, Storage,
+        cached_state::CachedState
+    },
     util::{
         defaults::BUFFER_SIZE, IndexEntry, LeaderState, LogEntry, PromiseMetaData,
         SnapshottedEntry, SyncItem,
@@ -27,7 +30,7 @@ where
     B: Storage<T, S>,
 {
     storage: B,
-    cached_state: CachedState,
+    cached_state: CachedState, // in-memory storage
     config_id: u32,
     pid: u64,
     peers: Vec<u64>, // excluding self pid
@@ -83,7 +86,11 @@ where
             }
         };
 
-        let cached_state: CachedState = CachedState::default();
+        // Creates an im-memory cache, needs to fetch values from backend storage
+        let promise = storage.get_promise();
+        let accepted = storage.get_accepted_round();
+        let decided = storage.get_decided_idx();
+        let cached_state: CachedState = CachedState::with(promise, accepted, decided);
 
         let mut paxos = SequencePaxos {
             storage,
@@ -139,7 +146,7 @@ where
         compact_idx: Option<u64>,
         local_only: bool,
     ) -> Result<(), CompactionErr> {
-        let decided_idx = self.storage.get_decided_idx();
+        let decided_idx = self.cached_state.get_decided_idx();
         let idx = match compact_idx {
             Some(i) => {
                 if i <= decided_idx {
@@ -166,7 +173,7 @@ where
 
     /// Return the decided index.
     pub fn get_decided_idx(&self) -> u64 {
-        self.storage.get_decided_idx()
+        self.cached_state.get_decided_idx()
     }
 
     /// Return trim index from storage.
@@ -219,7 +226,7 @@ where
     }
 
     fn handle_compaction(&mut self, c: Compaction) {
-        let decided_idx = self.storage.get_decided_idx();
+        let decided_idx = self.cached_state.get_decided_idx();
         let compacted_idx = self.storage.get_compacted_idx();
         match c {
             Compaction::Trim(Some(idx)) if idx <= decided_idx && idx > compacted_idx => {
@@ -282,7 +289,7 @@ where
                 match self.storage.get_entries(suffix_idx, suffix_idx + 1).first() {
                     // TODO
                     Some(data) => {
-                        if idx < self.storage.get_decided_idx() {
+                        if idx < self.cached_state.get_decided_idx() {
                             Some(LogEntry::Decided(data))
                         } else {
                             Some(LogEntry::Undecided(data))
@@ -385,7 +392,7 @@ where
 
     /// Read all decided entries from `from_idx` in the log. Returns `None` if `from_idx` is out of bounds.
     pub fn read_decided_suffix(&self, from_idx: u64) -> Option<Vec<LogEntry<T, S>>> {
-        let decided_idx = self.storage.get_decided_idx();
+        let decided_idx = self.cached_state.get_decided_idx();
         if from_idx < decided_idx {
             self.read_entries(from_idx..decided_idx)
         } else {
@@ -405,7 +412,7 @@ where
         let entries = self
             .storage
             .get_entries(from_idx - compacted_idx, to_idx - compacted_idx);
-        let decided_idx = self.storage.get_decided_idx();
+        let decided_idx = self.cached_state.get_decided_idx();
         entries
             .iter()
             .enumerate()
@@ -614,14 +621,14 @@ where
             self.leader = leader_pid;
             self.cached_state.set_promise(n);
             /* insert my promise */
-            let na = self.storage.get_accepted_round();
-            let ld = self.storage.get_decided_idx();
+            let na = self.cached_state.get_accepted_round();
+            let ld = self.cached_state.get_decided_idx();
             let la = self.storage.get_log_len();
             let my_promise = Promise::with(n, na, None, ld, la, self.get_stopsign());
             self.leader_state.set_promise(my_promise, self.pid);
             /* initialise longest chosen sequence and update state */
             self.state = (Role::Leader, Phase::Prepare);
-            let prep = Prepare::with(n, ld, self.storage.get_accepted_round(), la);
+            let prep = Prepare::with(n, ld, self.cached_state.get_accepted_round(), la);
             /* send prepare */
             for pid in &self.peers {
                 self.outgoing
@@ -641,8 +648,8 @@ where
             {
                 self.leader_state.set_batch_accept_meta(from, None);
             }
-            let ld = self.storage.get_decided_idx();
-            let n_accepted = self.storage.get_accepted_round();
+            let ld = self.cached_state.get_decided_idx();
+            let n_accepted = self.cached_state.get_accepted_round();
             let la = self.storage.get_log_len();
             let prep = Prepare::with(self.leader_state.n_leader, ld, n_accepted, la);
             self.outgoing
@@ -964,10 +971,10 @@ where
         let max_promise_meta = self.leader_state.get_max_promise_meta();
         match max_promise {
             SyncItem::Entries(sfx) => {
-                if max_promise_meta.n == self.storage.get_accepted_round() {
+                if max_promise_meta.n == self.cached_state.get_accepted_round() {
                     self.storage.append_entries(sfx);
                 } else {
-                    let ld = self.storage.get_decided_idx();
+                    let ld = self.cached_state.get_decided_idx();
                     self.storage.append_on_prefix(ld, sfx);
                 }
                 if let Some(ss) = max_stopsign {
@@ -1074,7 +1081,7 @@ where
                 let ld = if self.leader_state.get_chosen_idx() > 0 {
                     self.leader_state.get_chosen_idx()
                 } else {
-                    self.storage.get_decided_idx()
+                    self.cached_state.get_decided_idx()
                 };
                 AcceptSync::with(
                     self.leader_state.n_leader,
@@ -1182,7 +1189,7 @@ where
             self.leader = from;
             self.cached_state.set_promise(prep.n);
             self.state = (Role::Follower, Phase::Prepare);
-            let na = self.storage.get_accepted_round();
+            let na = self.cached_state.get_accepted_round();
             let la = self.storage.get_log_len();
             let promise = if Self::use_snapshots() {
                 let (compacted_idx, sync_item, stopsign) = if na > prep.n_accepted {
@@ -1209,7 +1216,7 @@ where
                     prep.n,
                     na,
                     sync_item,
-                    self.storage.get_decided_idx(),
+                    self.cached_state.get_decided_idx(),
                     compacted_idx,
                     stopsign,
                 )
@@ -1233,7 +1240,7 @@ where
                     prep.n,
                     na,
                     sync_item,
-                    self.storage.get_decided_idx(),
+                    self.cached_state.get_decided_idx(),
                     la,
                     stopsign,
                 )
@@ -1325,7 +1332,7 @@ where
             let entries = acc.entries;
             self.accept_entries(acc.n, entries);
             // handle decide
-            if acc.ld > self.storage.get_decided_idx() {
+            if acc.ld > self.cached_state.get_decided_idx() {
                 self.cached_state.set_decided_idx(acc.ld);
             }
         }

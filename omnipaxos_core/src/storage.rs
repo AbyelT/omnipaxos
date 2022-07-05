@@ -79,56 +79,67 @@ where
     //fn size_hint() -> u64;  // TODO: To let the system know trade-off of using entries vs snapshot?
 }
 
-/// An in-memory cached storage implementation which stores the important values for Sequence_Paxos. Upon recovery it should recover necessary data from Storage
+/// An in-memory cached storage implementation which stores the important variables for Sequence_Paxos. Upon recovery it should recover these variables from Storage
 #[allow(missing_docs)]
-#[derive(Clone, Debug)]
-pub struct CachedState {
-    /// Last promised round.
-    pub n_prom: Ballot,
-    /// Last accepted round.
-    pub acc_round: Ballot,
-    /// Length of the decided log.
-    pub ld: u64,
-}
+pub mod cached_state {
+    use crate::{
+        ballot_leader_election::Ballot,
+    };
 
-#[allow(missing_docs)]
-impl CachedState {
-    pub fn get_promise(&self) -> Ballot {
-        self.n_prom
+    #[derive(Clone, Debug)]
+    pub struct CachedState {
+        /// Last promised round.
+        pub n_prom: Ballot,
+        /// Last accepted round.
+        pub acc_round: Ballot,
+        /// Length of the decided log.
+        pub ld: u64,
     }
 
-    pub fn get_accepted_round(&self) -> Ballot {
-        self.acc_round
-    }
-
-    pub fn get_decided_idx(&self) -> u64 {
-        self.ld
-    }
-
-    pub fn set_promise(&mut self, n_prom: Ballot) {
-        self.n_prom = n_prom;
-    }
-
-    pub fn set_decided_idx(&mut self, ld: u64) {
-        self.ld = ld;
-    }
-
-    pub fn set_accepted_round(&mut self, na: Ballot) {
-        self.acc_round = na;
-    }
-
-    // TODO: A function to recover state from persistent storage, could be called by Sequence paxos during recovery
-    // pub fn recover_state(&self) -> Self {}
-}
-
-impl Default for CachedState {
-    fn default() -> Self {
-        Self {
-            n_prom: Ballot::default(),
-            acc_round: Ballot::default(),
-            ld: 0,
+    impl CachedState {
+        /// Creates an CachedState struct
+        pub fn with(n_prom: Ballot, na: Ballot, ld: u64) -> Self {
+            Self {
+                n_prom: n_prom,
+                acc_round: na,
+                ld: ld,
+            }
         }
+
+        /// Returns the current promised round
+        pub fn get_promise(&self) -> Ballot {
+            self.n_prom
+        }
+    
+        /// Returns the current accepted round
+        pub fn get_accepted_round(&self) -> Ballot {
+            self.acc_round
+        }
+    
+        /// Returns the current length of the log.
+        pub fn get_decided_idx(&self) -> u64 {
+            self.ld
+        }
+
+        /// Sets the round that has been promised.
+        pub fn set_promise(&mut self, n_prom: Ballot) {
+            self.n_prom = n_prom;
+        }
+    
+        /// Sets the decided index in the log.
+        pub fn set_decided_idx(&mut self, ld: u64) {
+            self.ld = ld;
+        }
+
+        /// Sets the latest accepted round
+        pub fn set_accepted_round(&mut self, na: Ballot) {
+            self.acc_round = na;
+        }
+    
+        // TODO: A function to recover state from persistent storage, could be called by Sequence paxos during recovery
+        // pub fn recover_state(&self) -> Self {}
     }
+    
 }
 
 /// Trait for implementing the storage backend of Sequence Paxos.
