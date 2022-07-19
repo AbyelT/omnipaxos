@@ -63,7 +63,7 @@ fn consensus_test() {
 
 }
 
-#[test]
+//#[test]
 fn read_test() {
     let log: Vec<Value> = vec![1, 3, 2, 7, 5, 10, 29, 100, 8, 12]
         .iter()
@@ -131,7 +131,7 @@ fn read_test() {
         
 }
 
-#[test]
+//#[test]
 fn read_entries_test() {
     let log: Vec<Value> = vec![1, 3, 2, 7, 5, 10, 29, 100, 8, 12]
         .iter()
