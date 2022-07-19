@@ -26,6 +26,8 @@ pub mod persistent_storage {
     {
         /// a disk-based commit log for entries
         c_log: CommitLog,
+        /// Path to commitlog
+        c_log_path: str,
         /// a struct for accessing local RocksDB database
         db: DB,
         /// Garbage collected index.
@@ -42,9 +44,9 @@ pub mod persistent_storage {
         pub fn with(replica_id: &str) -> Self {
 
             // initialize a commitlog for entries
-            let path: String = COMMITLOG.to_string() + &replica_id.to_string();
-            let c_opts = LogOptions::new(&path);
-            let mut c_log = CommitLog::new(c_opts).unwrap();
+            let c_path: String = COMMITLOG.to_string() + &replica_id.to_string();
+            let c_opts = LogOptions::new(&c_path);
+            let c_log = CommitLog::new(c_opts).unwrap();
 
             // insert dummy element onto index 0, only [1 ... n] will be used in the log
             //c_log.append_msg(AsBytes::as_bytes("dummy".as_bytes()));
@@ -56,12 +58,13 @@ pub mod persistent_storage {
             // setting options for DB
             //db_opts.set_row_cache(&lru);                    // Set cache for tale-level rows
             //db_opts.increase_parallelism(3);                // Set the amount threads for rocksDB
-            db_opts.create_if_missing(true);                // Creates an database if its missing
+            db_opts.create_if_missing(true);                  // Creates an database if its missing
             //db_opts.set_max_write_buffer_number(16);
 
             let db = DB::open(&db_opts, &db_path).unwrap();
             Self {
                 c_log: c_log,
+                c_log_path: c_path,
                 db: db,
                 trimmed_idx: 0,
                 snapshot: None,
@@ -204,16 +207,18 @@ pub mod persistent_storage {
         // TODO: solve the bug with truncate not removing the first element in commitlog
         fn trim(&mut self, trimmed_idx: u64) {
             println!("trim!");
-            let len = self.c_log.next_offset();
-            let trimmed_log: Vec<T> = self.get_entries(trimmed_idx, len);
 
-            println!("amount entries that should be in trimmed log {:?}", len - trimmed_idx);
-            println!("the trimmed log {:?}", trimmed_log);
-            println!("length before truncate {:?}", self.c_log.next_offset());
-            let _ = self.c_log.truncate(0);
-            println!("length after truncate {:?}", self.get_log_len());    
-            
-            self.append_entries(trimmed_log);
+            let c_opts = LogOptions::new(self.c_log_path);
+            self.c_log = CommitLog::new(c_opts).unwrap();
+
+            // let len = self.c_log.next_offset();
+            // let trimmed_log: Vec<T> = self.get_entries(trimmed_idx, len);
+            // println!("amount entries that should be in trimmed log {:?}", len - trimmed_idx);
+            // println!("the trimmed log {:?}", trimmed_log);
+            // println!("length before truncate {:?}", self.c_log.next_offset());
+            // let _ = self.c_log.truncate(0);
+            // println!("length after truncate {:?}", self.get_log_len());    
+            // self.append_entries(trimmed_log);
         }
 
         fn set_compacted_idx(&mut self, trimmed_idx: u64) {
