@@ -27,7 +27,7 @@ pub mod persistent_storage {
         /// a disk-based commit log for entries
         c_log: CommitLog,
         /// Path to commitlog
-        c_log_path: str,
+        c_log_path: String,
         /// a struct for accessing local RocksDB database
         db: DB,
         /// Garbage collected index.
@@ -46,6 +46,7 @@ pub mod persistent_storage {
             // initialize a commitlog for entries
             let c_path: String = COMMITLOG.to_string() + &replica_id.to_string();
             let c_opts = LogOptions::new(&c_path);
+            // set options to decrease load
             let c_log = CommitLog::new(c_opts).unwrap();
 
             // insert dummy element onto index 0, only [1 ... n] will be used in the log
@@ -207,18 +208,24 @@ pub mod persistent_storage {
         // TODO: solve the bug with truncate not removing the first element in commitlog
         fn trim(&mut self, trimmed_idx: u64) {
             println!("trim!");
+            
+            // get the part that should remain
+            let len = self.c_log.next_offset();
+            let trimmed_log: Vec<T> = self.get_entries(trimmed_idx, len);
 
-            let c_opts = LogOptions::new(self.c_log_path);
+            // remove old log
+            let _ = std::fs::remove_dir_all(&self.c_log_path);
+
+            //create new, insert the log into it
+            let c_opts = LogOptions::new(&self.c_log_path);
             self.c_log = CommitLog::new(c_opts).unwrap();
-
-            // let len = self.c_log.next_offset();
-            // let trimmed_log: Vec<T> = self.get_entries(trimmed_idx, len);
+            self.append_entries(trimmed_log);
+            
             // println!("amount entries that should be in trimmed log {:?}", len - trimmed_idx);
             // println!("the trimmed log {:?}", trimmed_log);
             // println!("length before truncate {:?}", self.c_log.next_offset());
             // let _ = self.c_log.truncate(0);
             // println!("length after truncate {:?}", self.get_log_len());    
-            // self.append_entries(trimmed_log);
         }
 
         fn set_compacted_idx(&mut self, trimmed_idx: u64) {
