@@ -123,14 +123,15 @@ pub mod persistent_storage {
             // println!("result from get_entries {:?}", res);
             // res
            
-            //println!("get_entries FROM and TO: {:?} -> {:?} ", from, to);
-            let buffer = self.c_log.read(from, ReadLimit::default()).unwrap(); //todo: 32 is the magic number
+            println!("get_entries FROM and excluding TO: {:?} -> {:?} ", from, to);
+	    let to = if to != 0 {to-1} else {0};
+            let buffer = self.c_log.read(from, ReadLimit::max_bytes((to*32) as usize)).unwrap(); //todo: 32 is the magic number
             let mut entries = vec![];
             for (idx, msg) in buffer.iter().enumerate() {
-                if idx >= to as usize{ break }                                                          // check that the amount entres are equal 'to'
+                //if idx >= (to) as usize { break }                                                          // check that the amount entres are equal 'to'
                 entries.push(FromBytes::read_from(msg.payload()).unwrap());
             }
-            //println!("res from get_entries {:?}", entries);
+            println!("res from get_entries {:?}", entries);
             entries   
         }
 
@@ -212,6 +213,9 @@ pub mod persistent_storage {
             // get the part that should remain
             let len = self.c_log.next_offset();
             let trimmed_log: Vec<T> = self.get_entries(trimmed_idx, len);
+            println!("amount entries that should be in trimmed log {:?}", len - trimmed_idx);
+            println!("the trimmed log {:?}", trimmed_log);
+            println!("length before truncate {:?}", self.c_log.next_offset());
 
             // remove old log
             let _ = std::fs::remove_dir_all(&self.c_log_path);
@@ -219,13 +223,10 @@ pub mod persistent_storage {
             //create new, insert the log into it
             let c_opts = LogOptions::new(&self.c_log_path);
             self.c_log = CommitLog::new(c_opts).unwrap();
+            println!("length after truncate {:?}", self.get_log_len());    
             self.append_entries(trimmed_log);
-            
-            // println!("amount entries that should be in trimmed log {:?}", len - trimmed_idx);
-            // println!("the trimmed log {:?}", trimmed_log);
-            // println!("length before truncate {:?}", self.c_log.next_offset());
+
             // let _ = self.c_log.truncate(0);
-            // println!("length after truncate {:?}", self.get_log_len());    
         }
 
         fn set_compacted_idx(&mut self, trimmed_idx: u64) {
