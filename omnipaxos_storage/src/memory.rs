@@ -13,7 +13,7 @@ pub mod persistent_storage {
     use commitlog::{
         message::{MessageSet, MessageBuf}, CommitLog, LogOptions, ReadLimit,
     };
-    use rocksdb::{Options, DB};
+    use rocksdb::{Options, DB, DBCompressionType};
     use zerocopy::{AsBytes, FromBytes};
 
     const COMMITLOG: &str = "commitlog/";
@@ -55,12 +55,16 @@ pub mod persistent_storage {
             // create a path and options for DB
             let db_path = ROCKSDB.to_string() + &replica_id.to_string();
             let mut db_opts = Options::default();
+            db_opts.increase_parallelism(4);                    // Set the amount threads for rocksDB
+            db_opts.create_if_missing(true);                    // Creates an database if its missing
+            
+            // optimize the memory usage
+            db_opts.set_max_write_buffer_number(1);        // Max buffers for writing
+            db_opts.set_write_buffer_size(0);
+            db_opts.set_db_write_buffer_size(0);
+            db_opts.set_compression_type(DBCompressionType::Zstd);
+            //db_opts.set_row_cache(&lru);                      // Set cache for tale-level rows
             //let lru = rocksdb::Cache::new_lru_cache(1200 as usize).unwrap();
-            // setting options for DB
-            //db_opts.set_row_cache(&lru);                    // Set cache for tale-level rows
-            //db_opts.increase_parallelism(3);                // Set the amount threads for rocksDB
-            db_opts.create_if_missing(true);                  // Creates an database if its missing
-            //db_opts.set_max_write_buffer_number(16);
 
             let db = DB::open(&db_opts, &db_path).unwrap();
             Self {
