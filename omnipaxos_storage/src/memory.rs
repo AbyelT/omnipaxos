@@ -127,12 +127,12 @@ pub mod persistent_storage {
             // println!("result from get_entries {:?}", res);
             // res
            
-            println!("get_entries FROM and excluding TO: {:?} -> {:?} ", from, to);
-	    let to = if to != 0 {to-1} else {0};
-            let buffer = self.c_log.read(from, ReadLimit::max_bytes((to*32) as usize)).unwrap(); //todo: 32 is the magic number
+            println!("get_entries FROM and TO: {:?} -> {:?} ", from, to);
+            let buffer = self.c_log.read(from, ReadLimit::default()).unwrap(); //todo: 32 is the magic number
             let mut entries = vec![];
             for (idx, msg) in buffer.iter().enumerate() {
-                //if idx >= (to) as usize { break }                                                          // check that the amount entres are equal 'to'
+ 		println!("index! {:?}", idx);
+                if (idx as u64 + from) >= to { break }                                                          // check that the amount entres are equal 'to'
                 entries.push(FromBytes::read_from(msg.payload()).unwrap());
             }
             println!("res from get_entries {:?}", entries);
