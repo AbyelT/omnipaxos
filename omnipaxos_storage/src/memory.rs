@@ -1,6 +1,6 @@
 
-/// An persistent storage implementation, lets sequencepaxos write the log
-/// and variables (promised, accepted) to disk. Log entries are serialized 
+/// An persistent storage implementation, lets sequence paxos write the log
+/// and variables (e.g. promised, accepted) to disk. Log entries are serialized 
 /// and de-serialized into slice of bytes when read or written from the log. 
 #[allow(missing_docs)]
 pub mod persistent_storage {
@@ -12,9 +12,9 @@ pub mod persistent_storage {
     use commitlog::{
         message::{MessageSet, MessageBuf}, CommitLog, LogOptions, ReadLimit,
     };
-    use rocksdb::{Options, DB, DBCompressionType};
+    use rocksdb::{Options, DB};
     use zerocopy::{AsBytes, FromBytes};
-
+    use std::mem::size_of;
     const COMMITLOG: &str = "commitlog/";
     const ROCKSDB: &str = "rocksDB/";
     //#[derive(Debug)]
@@ -42,7 +42,7 @@ pub mod persistent_storage {
     impl<T: Entry, S: Snapshot<T>> PersistentState<T, S> {
         pub fn with(replica_id: &str) -> Self {
 
-            // paths to commitlog and rocksDB store
+            // Paths to commitlog and rocksDB store
             let c_path: String = COMMITLOG.to_string() + &replica_id.to_string();
             let db_path = ROCKSDB.to_string() + &replica_id.to_string();
 
@@ -50,24 +50,14 @@ pub mod persistent_storage {
             let _ = std::fs::remove_dir_all(&c_path);
             let _ = std::fs::remove_dir_all(&db_path);
 
-            // initialize a commitlog for entries
+            // Initialize a commitlog for entries
             let c_opts = LogOptions::new(&c_path);
             let c_log = CommitLog::new(c_opts).unwrap();
 
-            // todo: perhaps insert dummy element onto index 0, only use indexes [1 ... n]
-            //c_log.append_msg(AsBytes::as_bytes("dummy".as_bytes()));
-
-            // create a path and options for DB
+            // rocksDB
             let mut db_opts = Options::default();
-            db_opts.increase_parallelism(4);                    // Set the amount threads for rocksDB
-            db_opts.create_if_missing(true);                    // Creates an database if its missing
-            db_opts.set_max_write_buffer_number(1);        // Max buffers for writing
-            db_opts.set_write_buffer_size(0);
-            db_opts.set_db_write_buffer_size(0);
-            db_opts.set_compression_type(DBCompressionType::Zstd);
-            //db_opts.set_row_cache(&lru);                      // Set cache for tale-level rows
-            //let lru = rocksdb::Cache::new_lru_cache(1200 as usize).unwrap();
-
+            db_opts.increase_parallelism(4);                        // Set the amount threads for rocksDB compaction and flushing
+            db_opts.create_if_missing(true);                        // Creates an database if its missing in the path
             let db = DB::open(&db_opts, &db_path).unwrap();
             Self {
                 c_log: c_log,
@@ -88,7 +78,8 @@ pub mod persistent_storage {
     {
 
         fn append_entry(&mut self, entry: T) -> u64 {
-            //println!("append entry! {:?}", entry);
+            let bytes = size_of::<T>();
+            println!("append entry, bytes {:?}", bytes);
             let entry_bytes = AsBytes::as_bytes(&entry);
             match self.c_log.append_msg(entry_bytes) {
                 Ok(x) => {
@@ -115,11 +106,6 @@ pub mod persistent_storage {
         }
 
         fn get_entries(&self, from: u64, to: u64) -> Vec<T> {
-            // let res = self.c_log.read(from, ReadLimit::max_bytes(to as usize)).unwrap_or(MessageBuf::default()).iter()
-            // .map(|msg| {FromBytes::read_from(msg.payload()).unwrap()}).collect();
-            // println!("result from get_entries {:?}", res);
-            // res
-           
             //println!("get_entries from: {:?} -> to: {:?} ", from, to);
             let buffer = self.c_log.read(from, ReadLimit::default()).unwrap(); // todo: 32 is the magic number
             let mut entries = vec![];
@@ -200,7 +186,6 @@ pub mod persistent_storage {
 
         fn trim(&mut self, trimmed_idx: u64) {
             //println!("TRIM!");
-            
             let mut trimmed_log: Vec<T> = self.get_entries(0, self.c_log.next_offset());    // get the entire log, drain it until trimmed_idx
 
             // println!("length before truncate {:?}", self.c_log.next_offset());
@@ -214,10 +199,6 @@ pub mod persistent_storage {
             self.c_log = CommitLog::new(c_opts).unwrap();
             self.append_entries(trimmed_log);
             //println!("length after truncate {:?}", self.get_log_len());    
-
-            // leftover
-            // let _ = self.c_log.truncate(0);
-            // println!("amount entries that should be in trimmed log {:?}", len - trimmed_idx);
         }
 
         fn set_compacted_idx(&mut self, trimmed_idx: u64) {
