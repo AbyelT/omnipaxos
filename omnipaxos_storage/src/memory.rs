@@ -14,9 +14,9 @@ pub mod persistent_storage {
     };
     use rocksdb::{Options, DB};
     use zerocopy::{AsBytes, FromBytes};
-    use std::mem::size_of;
     const COMMITLOG: &str = "commitlog/";
     const ROCKSDB: &str = "rocksDB/";
+
     //#[derive(Debug)]
     pub struct PersistentState<T, S>
     where
@@ -50,9 +50,11 @@ pub mod persistent_storage {
             let _ = std::fs::remove_dir_all(&c_path);
             let _ = std::fs::remove_dir_all(&db_path);
 
-            // Initialize a commitlog for entries
-            let c_opts = LogOptions::new(&c_path);
-            let c_log = CommitLog::new(c_opts).unwrap();
+            // Initialize a commitlog for entries, 
+            let mut c_opts = LogOptions::new(&c_path);
+	    c_opts.segment_max_bytes(0x10000);			    // 64 kB for each segment (entry)
+	    c_opts.index_max_items(10000);			    // Max 10,000 log entries in the commitlog
+	    let c_log = CommitLog::new(c_opts).unwrap();
 
             // rocksDB
             let mut db_opts = Options::default();
@@ -78,8 +80,7 @@ pub mod persistent_storage {
     {
 
         fn append_entry(&mut self, entry: T) -> u64 {
-            let bytes = size_of::<T>();
-            println!("append entry, bytes {:?}", bytes);
+            //println!("append entry {:?}", entry);
             let entry_bytes = AsBytes::as_bytes(&entry);
             match self.c_log.append_msg(entry_bytes) {
                 Ok(x) => {
@@ -107,11 +108,12 @@ pub mod persistent_storage {
 
         fn get_entries(&self, from: u64, to: u64) -> Vec<T> {
             //println!("get_entries from: {:?} -> to: {:?} ", from, to);
-            let buffer = self.c_log.read(from, ReadLimit::default()).unwrap(); // todo: 32 is the magic number
+            let buffer = self.c_log.read(from, ReadLimit::default()).unwrap_or(MessageBuf::default()); 
             let mut entries = vec![];
+	    let zero_idx_to = to-from;
             for (idx, msg) in buffer.iter().enumerate() {
-                if (idx as u64 + from) >= to { break }                                                  // todo: find a clener solution                                               // check that the amount entres are equal 'to'
-                entries.push(FromBytes::read_from(msg.payload()).unwrap());
+                if (idx as u64) >= zero_idx_to { break }
+		entries.push(FromBytes::read_from(msg.payload()).unwrap());
             }
             //println!("res from get_entries {:?}", entries);
             entries   
