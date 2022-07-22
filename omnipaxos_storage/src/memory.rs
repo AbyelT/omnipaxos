@@ -52,9 +52,9 @@ pub mod persistent_storage {
 
             // Initialize a commitlog for entries, 
             let mut c_opts = LogOptions::new(&c_path);
-	    c_opts.segment_max_bytes(0x10000);			    // 64 kB for each segment (entry)
-	    c_opts.index_max_items(10000);			    // Max 10,000 log entries in the commitlog
-	    let c_log = CommitLog::new(c_opts).unwrap();
+	        c_opts.segment_max_bytes(0x10000);			            // 64 kB for each segment (entry)
+	        c_opts.index_max_items(10000);			                // Max 10,000 log entries in the commitlog
+	        let c_log = CommitLog::new(c_opts).unwrap();
 
             // rocksDB
             let mut db_opts = Options::default();
@@ -102,7 +102,7 @@ pub mod persistent_storage {
 
         fn append_on_prefix(&mut self, from_idx: u64, entries: Vec<T>) -> u64 {
             //println!("append on prefix!"); 
-            let _ = self.c_log.truncate(from_idx);                    // truncate removes entries excluding 'from_idx' so subtract by 1
+            let _ = self.c_log.truncate(from_idx);                    
             self.append_entries(entries)
         }
 
@@ -110,10 +110,10 @@ pub mod persistent_storage {
             //println!("get_entries from: {:?} -> to: {:?} ", from, to);
             let buffer = self.c_log.read(from, ReadLimit::default()).unwrap_or(MessageBuf::default()); 
             let mut entries = vec![];
-	    let zero_idx_to = to-from;
+	        let zero_idx_to = to-from;
             for (idx, msg) in buffer.iter().enumerate() {
                 if (idx as u64) >= zero_idx_to { break }
-		entries.push(FromBytes::read_from(msg.payload()).unwrap());
+		        entries.push(FromBytes::read_from(msg.payload()).unwrap());
             }
             //println!("res from get_entries {:?}", entries);
             entries   
@@ -293,7 +293,7 @@ pub mod memory_storage {
         }
 
         fn get_entries(&self, from: u64, to: u64) -> Vec<T> {
-            self.log.get(from as usize..to as usize).unwrap_or(&[]).to_vec() // todo added to_vec 
+            self.log.get(from as usize..to as usize).unwrap_or(&[]).to_vec()
         }
 
         fn get_log_len(&self) -> u64 {
