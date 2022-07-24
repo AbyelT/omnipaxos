@@ -48,7 +48,7 @@ pub struct TestSystem {
 //     T: Entry,
 //     S: Snapshot<T>, 
 // {
-//     pub fn set_storage_type(storage_type: &str, pid: u64) -> StorageType<T, S> {
+//     pub fn create_storage_type(storage_type: &str, pid: u64) -> StorageType<T, S> {
 //         if storage_type.eq("PersistentState") {
 //             StorageType::PS(PersistentState::with(&pid.to_string()))
 //         }
@@ -179,13 +179,17 @@ impl TestSystem {
             sp_config.set_pid(pid);
             sp_config.set_peers(peers);
 
-            // let storage = match StorageType::set_storage_type(&storage_type, pid) {
-            //     StorageType::PS(persist_s) => persist_s,
-            //     StorageType::MS(mem_s) => mem_s,
-            // };
+            let storage: Box<dyn Storage<Value,LatestValue>> = {
+                if storage_type.eq("PersistentState") {
+                    Box::new(PersistentState::with(&pid.to_string()))
+                }
+                else {
+                    Box::new(MemoryStorage::default())
+                }
+            };
             
             let (omni_replica, omni_reg_f) = system.create_and_register(|| {
-                SequencePaxosComponent::with(SequencePaxos::with(sp_config, PersistentState::with(&pid.to_string())))
+                SequencePaxosComponent::with(SequencePaxos::with(sp_config, storage))
             });
 
             biconnect_components::<BallotLeaderElectionPort, _, _>(&ble_comp, &omni_replica)
